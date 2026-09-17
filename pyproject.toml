@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "danmaku-highlight-pipeline"
+version = "0.1.0"
+description = "Reference pipeline for danmaku-driven livestream program points and highlight boundaries"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Contributors" }]
+dependencies = []
+
+[project.optional-dependencies]
+speech = ["faster-whisper>=1.0"]
+
+[project.scripts]
+danmaku-program = "program_extractor:main"
+danmaku-audit = "program_audit:main"
+danmaku-highlights = "highlight_editor:main"
+
+[tool.setuptools]
+py-modules = [
+  "danmaku_uid",
+  "dual_platform_program",
+  "highlight_editor",
+  "media_integrity",
+  "program_audit",
+  "program_extractor",
+  "program_rule_engine_v2",
+  "program_source_analysis"
+]
