@@ -368,6 +368,52 @@ def restore_stable_tails(candidates, bili_intervals, dy_intervals, combined_inte
         }
 
 
+def reject_unwatchable_candidates(candidates):
+    """Revalidate laughter candidates after the stable-tail boundary is final."""
+    kept = []
+    rejected = []
+    for candidate in candidates:
+        reason = None
+        payoff_start = candidate.get("payoff_start_seconds")
+        nearby_bilibili = any(
+            other is not candidate
+            and other.get("end_policy") != "absolute-time-douyin"
+            and abs(
+                float(other["trigger_time_seconds"])
+                - float(candidate["trigger_time_seconds"])
+            ) <= engine.CLIP_GROUP_SECONDS
+            for other in candidates
+        )
+        if (
+            candidate.get("dominant_reaction") == "笑点铺垫"
+            and payoff_start is not None
+            and float(payoff_start) > float(candidate["event_end_seconds"])
+        ):
+            reason = "payoff-after-stable-tail"
+        elif (
+            candidate.get("end_policy") == "absolute-time-douyin"
+            and candidate.get("dominant_reaction") == "笑点"
+            and payoff_start is None
+            and int(candidate.get("laughter_users") or 0) <= engine.LAUGHTER_KEY_MIN_USERS
+            and not nearby_bilibili
+        ):
+            reason = "weak-douyin-laughter-without-payoff"
+
+        if reason is None:
+            kept.append(candidate)
+            continue
+        rejected.append({
+            "reason": reason,
+            "program_time_seconds": candidate.get("program_time_seconds"),
+            "trigger_time_seconds": candidate.get("trigger_time_seconds"),
+            "event_end_seconds": candidate.get("event_end_seconds"),
+            "end_policy": candidate.get("end_policy"),
+            "dominant_reaction": candidate.get("dominant_reaction"),
+        })
+    candidates[:] = kept
+    return rejected
+
+
 def supplemental_shuangju_candidates(xml_path, messages, existing_candidates, duration):
     """Add sustained positive-payoff moments not already covered by an event."""
     hits = sorted(
@@ -651,7 +697,7 @@ def build_program(xml_path: Path, douyin_root: Path, output_dir: Path, duration:
     restore_stable_tails(
         candidates, bili_intervals, dy_intervals, stable_intervals(combined, duration),
     )
-    rejected = []
+    rejected = reject_unwatchable_candidates(candidates)
     assign_groups(candidates)
 
     output_dir.mkdir(parents=True, exist_ok=True)

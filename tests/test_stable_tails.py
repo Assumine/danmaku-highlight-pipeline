@@ -46,6 +46,55 @@ class StableTailTests(unittest.TestCase):
         self.assertEqual(row["platform_evidence"]["tail_boundary"]["policy"],
                          "unchanged-no-stable-interval")
 
+    def test_payoff_after_stable_tail_is_rejected(self):
+        row = self.row(end=120)
+        row.update(
+            dominant_reaction="笑点铺垫",
+            payoff_start_seconds=140,
+            payoff_end_seconds=150,
+            delayed_laughter_payoff=True,
+        )
+        rows = [row]
+        rejected = dual.reject_unwatchable_candidates(rows)
+        self.assertEqual(rows, [])
+        self.assertEqual(rejected[0]["reason"], "payoff-after-stable-tail")
+
+    def test_weak_douyin_laughter_without_payoff_is_rejected(self):
+        row = self.row(policy="absolute-time-douyin", end=120)
+        row.update(
+            dominant_reaction="笑点",
+            laughter_users=2,
+            payoff_start_seconds=None,
+        )
+        rows = [row]
+        rejected = dual.reject_unwatchable_candidates(rows)
+        self.assertEqual(rows, [])
+        self.assertEqual(rejected[0]["reason"], "weak-douyin-laughter-without-payoff")
+
+    def test_bilibili_non_payoff_event_is_still_kept(self):
+        row = self.row(end=120)
+        row.update(
+            dominant_reaction="笑点",
+            laughter_users=2,
+            payoff_start_seconds=None,
+        )
+        rows = [row]
+        self.assertEqual(dual.reject_unwatchable_candidates(rows), [])
+        self.assertEqual(rows, [row])
+
+    def test_weak_douyin_lead_in_to_nearby_bilibili_event_is_kept(self):
+        douyin = self.row(policy="absolute-time-douyin", end=120)
+        douyin.update(
+            dominant_reaction="笑点",
+            laughter_users=2,
+            payoff_start_seconds=None,
+        )
+        bilibili = self.row(end=180)
+        bilibili.update(program_time_seconds=130, trigger_time_seconds=170)
+        rows = [douyin, bilibili]
+        self.assertEqual(dual.reject_unwatchable_candidates(rows), [])
+        self.assertEqual(rows, [douyin, bilibili])
+
 
 if __name__ == "__main__":
     unittest.main()
