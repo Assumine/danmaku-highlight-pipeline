@@ -26,10 +26,6 @@ PAYOFF_MIN_USERS = 4
 PAYOFF_TAIL_SECONDS = 15
 CLIP_GROUP_SECONDS = 100
 LAUGHTER_KEY_MIN_USERS = 2
-INVALID_ECHO_TERMS = (
-    "老板糊涂",
-)
-
 LAUGHTER_SIGNAL_PATTERN = re.compile(
     r"哈{2,}|笑|乐死|乐了|绷不住|蚌埠住|233|嘲笑|呲牙笑|"
     r"room_\d+_(?:79782|79508)|"
@@ -49,7 +45,8 @@ REACTION_PATTERNS = {
 ROUTINE_PATTERN = re.compile(
     r"开播|开了|来了|迟到|晚上好|早上好|晚安|拜拜|再见|下播|休息|睡觉|明天见|"
     r"最后一把|再来一把|加班|关注|福袋|早退|睡了|溜了|播多久|"
-    r"卡了|掉线|断流|黑屏|没声音|画面|延迟|网络|测试|谢谢|礼物|舰长|上舰|充电"
+    r"卡了|掉线|断流|黑屏|没声音|画面|延迟|网络|测试|谢谢|礼物|舰长|上舰|充电|"
+    r"老板糊涂|直播|录播|回归|回来|失踪|灯牌|牌子|取关"
 )
 PLACEHOLDER_PATTERN = re.compile(r"^表情【.*】$|^\[[^\]]+\]$")
 LAUGHTER_PAYOFF_PATTERN = LAUGHTER_SIGNAL_PATTERN
@@ -356,9 +353,6 @@ def find_candidates(path, messages):
         )
         if not (strong_reaction or collective_echo):
             continue
-        if any(term in metrics["echo_text"] for term in INVALID_ECHO_TERMS):
-            continue
-
         candidate = Candidate(
                 xml_file=path.name,
                 program_time_seconds=max(0.0, event_start - PRE_ROLL_SECONDS),

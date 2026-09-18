@@ -40,14 +40,14 @@ class HunterStartTests(unittest.TestCase):
         boss = next(n for n in analyze(rows)["nodes"] if n["category"] == "Boss英雄模式")
         self.assertEqual(boss["time"], 190)
 
-    def test_short_dense_hunter_cluster_is_confirmed_at_end(self):
+    def test_short_dense_hunter_cluster_uses_normal_pre_roll(self):
         times = (6068, 6094, 6121, 6135, 6138, 6145, 6148, 6158, 6174, 6179, 6204)
         rows = [Message(t, f"bilibili:short-{i}", "猎人模式") for i, t in enumerate(times)]
         hunter = self.hunter(rows)
-        self.assertEqual(hunter["time"], 6204)
-        self.assertEqual(hunter["reason"], "late-confirmed-short-theme")
+        self.assertEqual(hunter["time"], 6028)
+        self.assertEqual(hunter["reason"], "sustained-theme")
 
-    def test_delayed_first_keyword_near_recording_start_backfills_to_zero(self):
+    def test_delayed_first_keyword_near_recording_start_is_not_backfilled(self):
         rows = [
             Message(20 + i * 10, f"bilibili:context-{i}", "普通弹幕")
             for i in range(20)
@@ -57,8 +57,8 @@ class HunterStartTests(unittest.TestCase):
             for i, t in enumerate((303, 352, 383, 450, 498, 506))
         ]
         hunter = self.hunter(rows)
-        self.assertEqual(hunter["time"], 0)
-        self.assertEqual(hunter["reason"], "recording-start-continuation")
+        self.assertEqual(hunter["time"], 263)
+        self.assertEqual(hunter["reason"], "sustained-theme")
 
 
 if __name__ == "__main__":

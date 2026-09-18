@@ -21,10 +21,6 @@ THEMES = {
 MODE_NEIGHBOR_SECONDS = 60
 MODE_ISLAND_MIN_USERS = 3
 MODE_CATEGORIES = {"猎人模式", "Boss英雄模式"}
-MODE_STANDARD_MIN_DURATION = 150
-MODE_START_BOUNDARY_SECONDS = 360
-MODE_START_CONTEXT_MIN_MESSAGES = 20
-MODE_START_CONTEXT_MIN_USERS = 10
 MODE_EXCLUSIONS = {
     "Boss英雄模式": re.compile(r"英雄联盟|反恐精英OL"),
 }
@@ -161,19 +157,6 @@ def analyze(messages):
             trigger = start
             program_time = max(0.0, trigger - pre_roll)
             node_reason = "sustained-theme" if min_duration else "multiuser-theme"
-            if category in MODE_CATEGORIES:
-                prior_context = [m for m in messages if m.time < start]
-                if (
-                    start <= MODE_START_BOUNDARY_SECONDS
-                    and len(prior_context) >= MODE_START_CONTEXT_MIN_MESSAGES
-                    and len({m.user for m in prior_context}) >= MODE_START_CONTEXT_MIN_USERS
-                ):
-                    program_time = 0.0
-                    node_reason = "recording-start-continuation"
-                elif end - start < MODE_STANDARD_MIN_DURATION:
-                    trigger = end
-                    program_time = end
-                    node_reason = "late-confirmed-short-theme"
             if category == "爽局":
                 seen = set()
                 for message in group:

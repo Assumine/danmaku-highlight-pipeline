@@ -64,6 +64,7 @@ class StableTailTests(unittest.TestCase):
         row.update(
             dominant_reaction="笑点",
             laughter_users=2,
+            density_lift=1.99,
             payoff_start_seconds=None,
         )
         rows = [row]
@@ -82,18 +83,17 @@ class StableTailTests(unittest.TestCase):
         self.assertEqual(dual.reject_unwatchable_candidates(rows), [])
         self.assertEqual(rows, [row])
 
-    def test_weak_douyin_lead_in_to_nearby_bilibili_event_is_kept(self):
+    def test_dense_douyin_laughter_without_payoff_is_kept(self):
         douyin = self.row(policy="absolute-time-douyin", end=120)
         douyin.update(
             dominant_reaction="笑点",
             laughter_users=2,
+            density_lift=3.75,
             payoff_start_seconds=None,
         )
-        bilibili = self.row(end=180)
-        bilibili.update(program_time_seconds=130, trigger_time_seconds=170)
-        rows = [douyin, bilibili]
+        rows = [douyin]
         self.assertEqual(dual.reject_unwatchable_candidates(rows), [])
-        self.assertEqual(rows, [douyin, bilibili])
+        self.assertEqual(rows, [douyin])
 
 
 if __name__ == "__main__":

@@ -31,6 +31,7 @@ WATCHABLE_LINK_GAP_SECONDS = 30
 WATCHABLE_MIN_USERS = 4
 SHUANGJU_PRE_ROLL_SECONDS = 180
 SHUANGJU_PATTERN = re.compile(r"爽局|爽了|太爽|爽死|舒服了|赢麻|起飞|碾压")
+DOUYIN_WEAK_LAUGHTER_MIN_DENSITY_LIFT = 2.5
 
 
 @dataclass(frozen=True)
@@ -375,15 +376,6 @@ def reject_unwatchable_candidates(candidates):
     for candidate in candidates:
         reason = None
         payoff_start = candidate.get("payoff_start_seconds")
-        nearby_bilibili = any(
-            other is not candidate
-            and other.get("end_policy") != "absolute-time-douyin"
-            and abs(
-                float(other["trigger_time_seconds"])
-                - float(candidate["trigger_time_seconds"])
-            ) <= engine.CLIP_GROUP_SECONDS
-            for other in candidates
-        )
         if (
             candidate.get("dominant_reaction") == "笑点铺垫"
             and payoff_start is not None
@@ -395,7 +387,8 @@ def reject_unwatchable_candidates(candidates):
             and candidate.get("dominant_reaction") == "笑点"
             and payoff_start is None
             and int(candidate.get("laughter_users") or 0) <= engine.LAUGHTER_KEY_MIN_USERS
-            and not nearby_bilibili
+            and float(candidate.get("density_lift") or 0.0)
+            < DOUYIN_WEAK_LAUGHTER_MIN_DENSITY_LIFT
         ):
             reason = "weak-douyin-laughter-without-payoff"
 
@@ -728,6 +721,7 @@ def build_program(xml_path: Path, douyin_root: Path, output_dir: Path, duration:
             "energy_min_score": ENERGY_MIN_SCORE, "energy_min_density_lift": ENERGY_MIN_DENSITY_LIFT,
             "laughter_cluster_seconds": LAUGHTER_CLUSTER_SECONDS,
             "laughter_min_users": engine.LAUGHTER_KEY_MIN_USERS,
+            "douyin_weak_laughter_min_density_lift": DOUYIN_WEAK_LAUGHTER_MIN_DENSITY_LIFT,
             "watchable_link_gap_seconds": WATCHABLE_LINK_GAP_SECONDS,
             "watchable_min_users": WATCHABLE_MIN_USERS,
             "shuangju_pre_roll_seconds": SHUANGJU_PRE_ROLL_SECONDS,

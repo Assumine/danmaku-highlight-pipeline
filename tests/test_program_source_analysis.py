@@ -6,11 +6,19 @@ from pathlib import Path
 from unittest.mock import patch
 
 import program_extractor as extractor
+import program_rule_engine_v2 as engine
 import program_source_analysis as source
 from program_rule_engine_v2 import Message
 
 
 class SourceProgramTests(unittest.TestCase):
+    def test_routine_chat_topics_do_not_form_echo_evidence(self):
+        for text in ("老板糊涂", "准备下播", "这是录播", "失踪人口回归"):
+            with self.subTest(text=text):
+                rows = [Message(float(i), f"u{i}", text) for i in range(8)]
+                metrics = engine.window_metrics(rows, set(), 0.05)
+                self.assertEqual(metrics["echo_users"], 0)
+
     def test_boss_and_hero_share_one_display_category(self):
         texts = ("Boss来了", "BOSS技能", "boss很强", "英雄模式", "英雄不能复活", "这个英雄")
         rows = [Message(t, f"douyin:{i+1}", text)
