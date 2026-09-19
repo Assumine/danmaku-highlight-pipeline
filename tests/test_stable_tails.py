@@ -25,7 +25,8 @@ class StableTailTests(unittest.TestCase):
     def test_source_platform_and_supplement(self):
         for policy, expected in (("absolute-time-douyin", 125),
                                  ("dual-confirmed-bilibili-boundary", 120),
-                                 ("watchable-shuangju", 130)):
+                                 ("watchable-shuangju", 130),
+                                 ("pooled-cross-platform", 130)):
             row = self.row(policy)
             dual.restore_stable_tails([row], [dual.EnergyInterval(98, 120, {})],
                                      [dual.EnergyInterval(98, 125, {})],
