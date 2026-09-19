@@ -26,6 +26,9 @@ PAYOFF_MIN_USERS = 4
 PAYOFF_TAIL_SECONDS = 15
 CLIP_GROUP_SECONDS = 100
 LAUGHTER_KEY_MIN_USERS = 2
+STRONG_REACTION_MIN_EFFECTIVE_MESSAGES = 9
+STRONG_REACTION_MIN_REACTION_USERS = 4
+STRONG_REACTION_MIN_LAUGHTER_USERS = 3
 LAUGHTER_SIGNAL_PATTERN = re.compile(
     r"哈{2,}|笑|乐死|乐了|绷不住|蚌埠住|233|嘲笑|呲牙笑|"
     r"room_\d+_(?:79782|79508)|"
@@ -263,6 +266,19 @@ def find_laughter_payoff(messages, trigger_time):
     return None
 
 
+def is_strong_reaction(metrics):
+    has_reliable_sample = (
+        metrics["effective_messages"] >= STRONG_REACTION_MIN_EFFECTIVE_MESSAGES
+        or metrics["reaction_users"] >= STRONG_REACTION_MIN_REACTION_USERS
+        or metrics["laughter_users"] >= STRONG_REACTION_MIN_LAUGHTER_USERS
+    )
+    return (
+        metrics["score"] >= 9.0
+        and metrics["laughter_users"] >= LAUGHTER_KEY_MIN_USERS
+        and has_reliable_sample
+    )
+
+
 def find_candidates(path, messages):
     messages, _ignored = filter_uid_spam(messages)
     if not messages:
@@ -339,10 +355,7 @@ def find_candidates(path, messages):
         event_start = group[0][0]
         event_end = max(item[1] for item in group)
         metrics = peak[2]
-        strong_reaction = (
-            metrics["score"] >= 9.0
-            and metrics["laughter_users"] >= LAUGHTER_KEY_MIN_USERS
-        )
+        strong_reaction = is_strong_reaction(metrics)
         collective_echo = (
             metrics["score"] >= 8.4
             and metrics["laughter_users"] >= LAUGHTER_KEY_MIN_USERS
