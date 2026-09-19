@@ -848,7 +848,6 @@ def analyze_highlights(
             "dual-near-end", "dual-confirmed-bilibili-boundary",
             "absolute-time-bilibili", "absolute-time-douyin",
             "creation-time-fused", "watchable-shuangju",
-            "pooled-cross-platform",
         }
         if terminal_policy in authoritative_end_policies:
             terminal_end = group.members[-1].end_hint

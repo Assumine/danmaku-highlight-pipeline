@@ -17,7 +17,7 @@ import program_rule_engine_v2 as engine
 from danmaku_uid import filter_uid_spam, valid_uid
 
 
-POLICY_VERSION = "dual-platform-v6-pooled-reaction"
+POLICY_VERSION = "dual-platform-v5-stable-tail"
 MIN_ABSOLUTE_TIMESTAMP = 946684800.0
 ENERGY_WINDOW_SECONDS = 12
 ENERGY_MIN_MESSAGES = 5
@@ -32,12 +32,6 @@ WATCHABLE_MIN_USERS = 4
 SHUANGJU_PRE_ROLL_SECONDS = 180
 SHUANGJU_PATTERN = re.compile(r"爽局|爽了|太爽|爽死|舒服了|赢麻|起飞|碾压")
 DOUYIN_WEAK_LAUGHTER_MIN_DENSITY_LIFT = 2.5
-CROSS_PLATFORM_MIN_EFFECTIVE_MESSAGES = 12
-CROSS_PLATFORM_MIN_USERS = 12
-CROSS_PLATFORM_MIN_REACTION_USERS = 5
-CROSS_PLATFORM_MIN_REACTION_RATIO = 0.35
-CROSS_PLATFORM_MIN_DENSITY_LIFT = 2.0
-CROSS_PLATFORM_MAX_ROUTINE_RATIO = 0.20
 
 
 @dataclass(frozen=True)
@@ -347,75 +341,13 @@ def merge_platform_candidates(bili_candidates, dy_candidates, duration):
     return result
 
 
-def qualifies_cross_platform_candidate(candidate):
-    """Require broad pooled agreement without weakening either platform alone."""
-    return (
-        candidate.effective_messages >= CROSS_PLATFORM_MIN_EFFECTIVE_MESSAGES
-        and candidate.unique_users >= CROSS_PLATFORM_MIN_USERS
-        and candidate.reaction_users >= CROSS_PLATFORM_MIN_REACTION_USERS
-        and candidate.reaction_ratio >= CROSS_PLATFORM_MIN_REACTION_RATIO
-        and candidate.density_lift >= CROSS_PLATFORM_MIN_DENSITY_LIFT
-        and candidate.routine_ratio < CROSS_PLATFORM_MAX_ROUTINE_RATIO
-    )
-
-
-def supplemental_cross_platform_candidates(
-    xml_path, messages, existing_candidates, duration,
-):
-    """Recover events that become strong only after both audiences are pooled."""
-    result = []
-    for candidate in engine.find_candidates(xml_path, messages):
-        if not qualifies_cross_platform_candidate(candidate):
-            continue
-        event_span = (
-            float(candidate.trigger_time_seconds),
-            min(duration, float(candidate.event_end_seconds)),
-        )
-        if any(
-            intersect(event_span, (
-                float(existing["trigger_time_seconds"]),
-                min(duration, float(existing["event_end_seconds"])),
-            ))
-            for existing in [*existing_candidates, *result]
-        ):
-            continue
-
-        row = asdict(candidate)
-        row.update(
-            event_end_seconds=event_span[1],
-            end_policy="pooled-cross-platform",
-            platform_evidence={
-                "selection": "cross-platform-pooled-reaction",
-                "effective_messages": candidate.effective_messages,
-                "unique_users": candidate.unique_users,
-                "reaction_users": candidate.reaction_users,
-                "reaction_ratio": candidate.reaction_ratio,
-                "density_lift": candidate.density_lift,
-                "routine_ratio": candidate.routine_ratio,
-                "thresholds": {
-                    "min_effective_messages": CROSS_PLATFORM_MIN_EFFECTIVE_MESSAGES,
-                    "min_unique_users": CROSS_PLATFORM_MIN_USERS,
-                    "min_reaction_users": CROSS_PLATFORM_MIN_REACTION_USERS,
-                    "min_reaction_ratio": CROSS_PLATFORM_MIN_REACTION_RATIO,
-                    "min_density_lift": CROSS_PLATFORM_MIN_DENSITY_LIFT,
-                    "max_routine_ratio_exclusive": CROSS_PLATFORM_MAX_ROUTINE_RATIO,
-                },
-                "boundary_correction": "combined-first-stable-fall",
-            },
-            policy_version=POLICY_VERSION,
-        )
-        result.append(row)
-    return result
-
-
 def restore_stable_tails(candidates, bili_intervals, dy_intervals, combined_intervals):
     """Keep selection intact; stop at the first stable fall in the source event."""
     for candidate in candidates:
         policy = candidate["end_policy"]
         intervals = (
             dy_intervals if policy == "absolute-time-douyin"
-            else combined_intervals
-            if policy in {"watchable-shuangju", "pooled-cross-platform"}
+            else combined_intervals if policy == "watchable-shuangju"
             else bili_intervals
         )
         trigger = float(candidate["trigger_time_seconds"])
@@ -752,9 +684,6 @@ def build_program(xml_path: Path, douyin_root: Path, output_dir: Path, duration:
     dy_candidates = engine.find_candidates(xml_path, trusted_raw)
     candidates = merge_platform_candidates(bili_candidates, dy_candidates, duration)
     combined, combined_ignored = filter_uid_spam(bili_raw + trusted_raw)
-    candidates.extend(supplemental_cross_platform_candidates(
-        xml_path, combined, candidates, duration,
-    ))
     candidates.extend(supplemental_shuangju_candidates(
         xml_path, combined, candidates, duration,
     ))
@@ -793,12 +722,6 @@ def build_program(xml_path: Path, douyin_root: Path, output_dir: Path, duration:
             "laughter_cluster_seconds": LAUGHTER_CLUSTER_SECONDS,
             "laughter_min_users": engine.LAUGHTER_KEY_MIN_USERS,
             "douyin_weak_laughter_min_density_lift": DOUYIN_WEAK_LAUGHTER_MIN_DENSITY_LIFT,
-            "cross_platform_min_effective_messages": CROSS_PLATFORM_MIN_EFFECTIVE_MESSAGES,
-            "cross_platform_min_users": CROSS_PLATFORM_MIN_USERS,
-            "cross_platform_min_reaction_users": CROSS_PLATFORM_MIN_REACTION_USERS,
-            "cross_platform_min_reaction_ratio": CROSS_PLATFORM_MIN_REACTION_RATIO,
-            "cross_platform_min_density_lift": CROSS_PLATFORM_MIN_DENSITY_LIFT,
-            "cross_platform_max_routine_ratio": CROSS_PLATFORM_MAX_ROUTINE_RATIO,
             "watchable_link_gap_seconds": WATCHABLE_LINK_GAP_SECONDS,
             "watchable_min_users": WATCHABLE_MIN_USERS,
             "shuangju_pre_roll_seconds": SHUANGJU_PRE_ROLL_SECONDS,
