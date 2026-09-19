@@ -20,7 +20,17 @@ THEMES = {
 }
 MODE_NEIGHBOR_SECONDS = 60
 MODE_ISLAND_MIN_USERS = 3
+MODE_BRIDGE_MIN_USERS = 2
 MODE_CATEGORIES = {"猎人模式", "Boss英雄模式"}
+HUNTER_SHORT_MIN_DURATION = 45
+HUNTER_SHORT_MIN_MESSAGES = 4
+HUNTER_SHORT_MIN_USERS = 4
+HUNTER_SHORT_MECHANICS_USERS = 3
+HUNTER_SHORT_PRE_ROLL = 90
+HUNTER_MECHANICS = re.compile(
+    r"猎人.{0,12}(?:模式是什么|模式是啥|机制|怎么玩|咋玩|能买|买啥|技能|小弟|看得到|看不到|能看到|能看见)"
+    r"|(?:什么|啥).{0,8}猎人模式"
+)
 MODE_EXCLUSIONS = {
     "Boss英雄模式": re.compile(r"英雄联盟|反恐精英OL"),
 }
@@ -35,6 +45,30 @@ def clusters(messages, gap):
         else:
             result[-1].append(message)
     return result
+
+
+def theme_rejection_reason(group, min_duration, min_messages, min_users):
+    if not group:
+        return "insufficient-duration-messages-or-users"
+    start, end = group[0].time, group[-1].time
+    users = {message.user for message in group}
+    if end - start < min_duration or len(group) < min_messages or len(users) < min_users:
+        return "insufficient-duration-messages-or-users"
+    if min_duration and end > start:
+        middle = (start + end) / 2
+        side_users = (
+            {message.user for message in group if message.time < middle},
+            {message.user for message in group if message.time >= middle},
+        )
+        if min(map(len, side_users)) < 2:
+            return "one-sided-discussion"
+    return None
+
+
+def island_distance(left, right):
+    if left[-1].time <= right[0].time:
+        return right[0].time - left[-1].time
+    return left[0].time - right[-1].time
 
 
 def evidence(messages):
@@ -130,33 +164,58 @@ def analyze(messages):
                 rejected.append({"category": category, "reason": "request-or-history", "evidence": evidence(requests)})
         if category in MODE_CATEGORIES:
             islands = clusters(matches, MODE_NEIGHBOR_SECONDS)
-            supported = [
-                message
-                for island in islands
+            strong_indexes = {
+                index for index, island in enumerate(islands)
                 if len({item.user for item in island}) >= MODE_ISLAND_MIN_USERS
-                for message in island
-            ]
-            isolated = [message for island in islands for message in island if message not in supported]
+            }
+            bridge_indexes = set()
+            if category == "猎人模式":
+                for index, island in enumerate(islands):
+                    if index in strong_indexes or len({item.user for item in island}) < MODE_BRIDGE_MIN_USERS:
+                        continue
+                    if any(island_distance(island, islands[strong]) <= gap for strong in strong_indexes):
+                        bridge_indexes.add(index)
+            included_indexes = strong_indexes | bridge_indexes
+            supported = [message for index, island in enumerate(islands)
+                         if index in included_indexes for message in island]
+            bridge_messages = {
+                id(message) for index, island in enumerate(islands)
+                if index in bridge_indexes for message in island
+            }
+            isolated = [message for index, island in enumerate(islands)
+                        if index not in included_indexes for message in island]
             if isolated:
                 rejected.append({"category": category, "reason": "temporally-isolated-small-cluster",
                                  "evidence": evidence(isolated)})
             matches = supported
+        else:
+            bridge_messages = set()
         for group in clusters(matches, gap):
             start, end = group[0].time, group[-1].time
-            users = {m.user for m in group}
-            reason = None
-            if end - start < min_duration or len(group) < min_messages or len(users) < min_users:
-                reason = "insufficient-duration-messages-or-users"
-            if min_duration and end > start:
-                middle = (start + end) / 2
-                if min(len({m.user for m in group if m.time < middle}), len({m.user for m in group if m.time >= middle})) < 2:
-                    reason = "one-sided-discussion"
-            if reason:
+            reason = theme_rejection_reason(group, min_duration, min_messages, min_users)
+            mechanics_users = {
+                message.user for message in group if HUNTER_MECHANICS.search(message.text)
+            }
+            short_hunter_mechanics = (
+                category == "猎人模式"
+                and end - start >= HUNTER_SHORT_MIN_DURATION
+                and len(group) >= HUNTER_SHORT_MIN_MESSAGES
+                and len({message.user for message in group}) >= HUNTER_SHORT_MIN_USERS
+                and len(mechanics_users) >= HUNTER_SHORT_MECHANICS_USERS
+            )
+            if reason and not short_hunter_mechanics:
                 rejected.append({"category": category, "start": start, "end": end, "reason": reason, "evidence": evidence(group)})
                 continue
-            trigger = start
-            program_time = max(0.0, trigger - pre_roll)
-            node_reason = "sustained-theme" if min_duration else "multiuser-theme"
+            base_group = [message for message in group if id(message) not in bridge_messages]
+            base_reason = theme_rejection_reason(base_group, min_duration, min_messages, min_users)
+            trigger = base_group[0].time if base_group and base_reason is None else start
+            selected_pre_roll = HUNTER_SHORT_PRE_ROLL if short_hunter_mechanics and reason else pre_roll
+            program_time = max(0.0, trigger - selected_pre_roll)
+            node_reason = (
+                "short-mechanics-theme"
+                if short_hunter_mechanics and reason
+                else "sustained-theme" if min_duration else "multiuser-theme"
+            )
             if category == "爽局":
                 seen = set()
                 for message in group:

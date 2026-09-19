@@ -300,6 +300,7 @@ def original_rows(ass, extractor):
             refined = result[category]["P1"][display[category].index(time)]
         explanation = {
             "sustained-theme": "持续主题关键词及多用户覆盖",
+            "short-mechanics-theme": "多人持续讨论模式机制并扩大前置",
             "multiuser-theme": "多人主题关键词反馈",
             "bilibili-laughter-seed": "B站笑词/笑表情触发，两平台反应辅助",
         }.get(node.get("reason"), "ASS关键词窗口命中")

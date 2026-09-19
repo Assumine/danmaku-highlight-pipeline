@@ -77,6 +77,34 @@ class SourceProgramTests(unittest.TestCase):
         result = source.analyze(rows)
         self.assertEqual([node["category"] for node in result["nodes"]], ["猎人模式"])
 
+    def test_two_user_hunter_lead_is_retained_only_near_strong_island(self):
+        rows = [
+            Message(100, "douyin:lead-1", "能打猎人吗"),
+            Message(130, "douyin:lead-2", "猎人会掉血吗"),
+        ]
+        rows += [
+            Message(time, f"douyin:strong-{index}", "窥屏猎人")
+            for index, time in enumerate((300, 320, 350, 380), 1)
+        ]
+        node = source.analyze(rows)["nodes"][0]
+        self.assertEqual(node["category"], "猎人模式")
+        self.assertEqual(node["time"], 60)
+
+        isolated = rows[:2]
+        self.assertFalse(any(node["category"] == "猎人模式" for node in source.analyze(isolated)["nodes"]))
+
+    def test_short_hunter_mechanics_discussion_uses_longer_pre_roll(self):
+        texts = ("猎人模式是什么咋玩的", "猎人能买啥", "猎人模式是啥机制", "猎人能看到人吗")
+        rows = [Message(time, f"douyin:u{index}", text)
+                for index, (time, text) in enumerate(zip((100, 146, 157, 165), texts), 1)]
+        node = source.analyze(rows)["nodes"][0]
+        self.assertEqual(node["time"], 10)
+        self.assertEqual(node["reason"], "short-mechanics-theme")
+
+    def test_short_peek_hunter_burst_remains_rejected(self):
+        rows = self.rows("douyin", "窥屏猎人", (100, 106, 112, 118, 124, 130, 136, 142, 152))
+        self.assertFalse(any(node["category"] == "猎人模式" for node in source.analyze(rows)["nodes"]))
+
     def test_same_topic_across_platforms_is_one_node(self):
         rows = self.rows("douyin", "自私", range(100, 104))
         rows += self.rows("bilibili", "自私", range(102, 106))
