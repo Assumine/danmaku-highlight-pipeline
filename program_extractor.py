@@ -594,7 +594,7 @@ def generate_program_list(
         recording_date=recording_date,
     )
     return {
-        category + "(测试)" if category in ("猎人模式", "Boss英雄模式") else category: parts
+        category + "(测试)" if category in ("猎人模式", "Boss英雄模式", "爽局") else category: parts
         for category, parts in result.items()
     }
 

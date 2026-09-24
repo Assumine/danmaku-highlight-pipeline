@@ -17,7 +17,7 @@ import program_rule_engine_v2 as engine
 from danmaku_uid import filter_uid_spam, valid_uid
 
 
-POLICY_VERSION = "dual-platform-v5-stable-tail"
+POLICY_VERSION = "dual-platform-v6-shuangju-120s"
 MIN_ABSOLUTE_TIMESTAMP = 946684800.0
 ENERGY_WINDOW_SECONDS = 12
 ENERGY_MIN_MESSAGES = 5
@@ -29,8 +29,8 @@ STABLE_FALL_SECONDS = 4
 LAUGHTER_CLUSTER_SECONDS = 12
 WATCHABLE_LINK_GAP_SECONDS = 30
 WATCHABLE_MIN_USERS = 4
-SHUANGJU_PRE_ROLL_SECONDS = 180
-SHUANGJU_PATTERN = re.compile(r"爽局|爽了|太爽|爽死|舒服了|赢麻|起飞|碾压")
+SHUANGJU_PRE_ROLL_SECONDS = 120
+SHUANGJU_PATTERN = re.compile(r"爽局|爽了|太爽|爽死|舒服了|赢麻|碾压")
 DOUYIN_WEAK_LAUGHTER_MIN_DENSITY_LIFT = 2.5
 
 
@@ -460,7 +460,7 @@ def supplemental_shuangju_candidates(xml_path, messages, existing_candidates, du
         metrics["dominant_reaction"] = "爽局体验"
         row = asdict(engine.Candidate(
             xml_file=Path(xml_path).name,
-            program_time_seconds=max(0.0, consensus - SHUANGJU_PRE_ROLL_SECONDS),
+            program_time_seconds=max(0.0, event_start - SHUANGJU_PRE_ROLL_SECONDS),
             trigger_time_seconds=consensus,
             event_end_seconds=min(duration, event_end),
             **metrics,
@@ -482,7 +482,7 @@ def supplemental_shuangju_candidates(xml_path, messages, existing_candidates, du
                     platform: len(platform_set)
                     for platform, platform_set in sorted(platform_users.items())
                 },
-                "boundary_correction": "180s-pre-roll-normal-theme-end",
+                "boundary_correction": "120s-before-first-theme-hit-normal-theme-end",
             },
             policy_version=POLICY_VERSION,
         )

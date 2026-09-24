@@ -1,6 +1,6 @@
 # Danmaku Highlight Pipeline
 
-一个基于直播弹幕生成节目单、发现候选片段并辅助确定剪辑边界的参考实现。
+一个基于直播弹幕生成节目单、发现候选片段、确定剪辑边界，并对接多 P 稿件的参考实现。
 
 > [!IMPORTANT]
 > 这不是开箱即用的通用剪辑器。当前规则来自一个具体直播间的观众语言、常用表情和节目模式，未经重新标注和校准，直接用于其他主播会产生明显漏检和误检。
@@ -13,15 +13,16 @@
 - 生成节目单主题点，例如笑点、理财、猎人模式和 Boss/英雄模式。
 - 结合稳定热度回落、语音断句和音频弱谷确定剪辑边界。
 - 输出审计数据，解释每个候选点的来源、平台证据和边界依据。
+- 构造 biliup 1.2.6 投稿命令与分 P 编辑载荷，按本地场次确定 P 号和直播日。
 
 ## 它不负责什么
 
-- 不录制直播，不登录或投稿 B 站。
+- 不录制直播，不保存登录状态，也不自动执行投稿或编辑请求。
 - 不包含 cookie、token、直播间配置、历史弹幕、视频或模型文件。
 - 不保证主题词在其他直播间具有相同含义。
 - 不替代人工抽检，也不处理内容版权和平台合规问题。
 
-我们在实际流水线中借用 [biliup](https://github.com/biliup/biliup) 完成直播录制和多 P 投稿。本仓库只公开录制完成后的算法层，与 biliup 没有代码包含关系，也不是 biliup 官方组件。
+实际流水线借用 [biliup](https://github.com/biliup/biliup) 1.2.6 录制视频和 B 站弹幕；录制器设为 `Noop` 上传，待本地合并、压制与剪辑后，再由 biliup 命令行投稿。本仓库公开算法和无凭据的接口适配层，不包含 biliup 代码，也不是其官方组件。
 
 ## 当前流程
 
@@ -37,9 +38,12 @@ flowchart LR
     H --> I[稳定热度回落]
     I --> J[Whisper 断句与音频弱谷]
     J --> K[片段与审计记录]
+    K --> L[按直播日汇总片段与节目单]
+    L --> M[biliup 命令行追加分 P]
+    M --> N[稿件编辑接口重排与替换]
 ```
 
-算法的详细阶段见 [docs/architecture.md](docs/architecture.md)。需要迁移到其他直播间时，先阅读 [docs/customization.md](docs/customization.md) 和 [docs/limitations.md](docs/limitations.md)。
+算法阶段见 [docs/architecture.md](docs/architecture.md)，投稿接口见 [docs/integration.md](docs/integration.md)。迁移到其他直播间前，请阅读 [docs/customization.md](docs/customization.md) 和 [docs/limitations.md](docs/limitations.md)。
 
 ## 快速开始
 
@@ -101,9 +105,10 @@ workspace/
 | `program_audit.py` | 只读审计和规则解释 |
 | `danmaku_uid.py` | UID 有效性与短窗刷屏过滤 |
 | `media_integrity.py` | ffprobe 媒体完整性校验 |
+| `biliup_integration.py` | biliup 1.2.6 命令、直播日及分 P 编辑载荷 |
 
 ## 开源边界
 
-仓库中的默认关键词和阈值用于展示“目前如何实现”，不是通用推荐值。真实自动上传脚本、账号凭据、主播映射、BV 记录和生产目录没有进入仓库。
+仓库中的默认关键词和阈值展示当前实现，不是通用推荐值。自动任务调度、账号凭据、主播映射、BV 记录和生产目录不在仓库中。
 
 许可证：MIT。biliup、FFmpeg、faster-whisper 等外部项目使用各自许可证。

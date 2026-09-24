@@ -23,7 +23,7 @@ REASONS = {
     "absolute-time-douyin": "绝对时间对齐，抖音独立事件保留原边界",
     "creation-time-fused": "对齐不可信，按创建时间合并后分析",
     "bilibili-reaction-wave": "无双平台覆盖，使用 B 站反应波",
-    "watchable-shuangju": "多人爽局共识，提前 180 秒并保留正常收尾",
+    "watchable-shuangju": "多人爽局共识，首个有效反馈前保留 120 秒并正常收尾",
     "no-crowd-laughter-cluster": "没有有效的多人笑词/笑表情反应簇",
     "no-overlapping-douyin-interval": "此阶段未找到重叠的抖音高能区间",
     "fixed-40s-pre-roll": "固定前置 40 秒",
@@ -192,7 +192,7 @@ def clip_rows(candidates, manifest, warnings):
             "absolute-time-douyin": "抖音事件命中；未与B站重叠，保留原起止边界",
             "creation-time-fused": "群体笑词/笑表情反应簇",
             "bilibili-reaction-wave": "B站反应规则命中",
-            "watchable-shuangju": "至少 4 位观众形成爽局共识；片头提前 180 秒，片尾按主题事件正常收束",
+            "watchable-shuangju": "至少 4 位观众形成爽局共识；首个有效反馈前保留 120 秒，片尾按主题事件正常收束",
         }.get(candidate.get("end_policy"), "候选规则命中")
         if manifest:
             if len(matches) != 1:

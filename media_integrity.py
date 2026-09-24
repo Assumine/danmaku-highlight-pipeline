@@ -22,9 +22,10 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 WORKSPACE_ROOT = Path(os.environ.get("DANMAKU_WORKSPACE_ROOT", Path.cwd())).resolve()
 FFPROBE = Path(os.environ.get("FFPROBE_BIN") or shutil.which("ffprobe") or SCRIPT_DIR / "ffmpeg" / "bin" / "ffprobe.exe")
 CACHE_DIR = WORKSPACE_ROOT / "outputs" / "media_validation"
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 CACHE_WAIT_SECONDS = 15 * 60
 CACHE_LOCK_STALE_SECONDS = 2 * 60 * 60
+MAX_AV_BOUNDARY_DELTA_SECONDS = 0.75
 
 STRUCTURAL_ERROR_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
@@ -76,6 +77,14 @@ def _packet_count(stream: dict) -> int:
         return 0
 
 
+def _packet_timestamp(stream: dict, key: str) -> Optional[float]:
+    try:
+        value = stream.get(key)
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _structural_errors(stderr: str) -> list[str]:
     matches: list[str] = []
     for raw_line in stderr.splitlines():
@@ -88,7 +97,10 @@ def _structural_errors(stderr: str) -> list[str]:
     return matches
 
 
-def _scan_packets(path: Path, stream_indexes: set[int]) -> tuple[dict[int, int], list[str], list[str], int]:
+def _scan_packets(
+    path: Path,
+    stream_indexes: set[int],
+) -> tuple[dict[int, dict], list[str], list[str], int]:
     command = [
         str(FFPROBE),
         "-v", "warning",
@@ -127,7 +139,10 @@ def _scan_packets(path: Path, stream_indexes: set[int]) -> tuple[dict[int, int],
     stderr_thread = threading.Thread(target=drain_stderr, name="ffprobe-stderr", daemon=True)
     stderr_thread.start()
 
-    packet_counts = {index: 0 for index in stream_indexes}
+    packet_stats = {
+        index: {"count": 0, "first_dts": None, "last_dts": None}
+        for index in stream_indexes
+    }
     last_dts: dict[int, float] = {}
     timestamp_errors: list[str] = []
     for raw_line in process.stdout:
@@ -138,15 +153,18 @@ def _scan_packets(path: Path, stream_indexes: set[int]) -> tuple[dict[int, int],
             stream_index = int(fields[0])
         except ValueError:
             continue
-        if stream_index not in packet_counts:
+        if stream_index not in packet_stats:
             continue
-        packet_counts[stream_index] += 1
+        stats = packet_stats[stream_index]
+        stats["count"] += 1
         if len(fields) < 2 or fields[1] in ("", "N/A"):
             continue
         try:
             dts = float(fields[1])
         except ValueError:
             continue
+        if stats["first_dts"] is None:
+            stats["first_dts"] = dts
         previous = last_dts.get(stream_index)
         if previous is not None and dts <= previous:
             if len(timestamp_errors) < 12:
@@ -154,12 +172,13 @@ def _scan_packets(path: Path, stream_indexes: set[int]) -> tuple[dict[int, int],
                     f"stream {stream_index} non-monotonically increasing DTS: {previous:.6f} >= {dts:.6f}"
                 )
         last_dts[stream_index] = dts
+        stats["last_dts"] = dts
 
     return_code = process.wait()
     stderr_thread.join()
     if return_code != 0 and not structural_errors:
         structural_errors.append("ffprobe packet scan failed: " + " | ".join(stderr_tail[-8:]))
-    return packet_counts, structural_errors, timestamp_errors, return_code
+    return packet_stats, structural_errors, timestamp_errors, return_code
 
 
 def _check_expected_duration(actual: float, expected: Optional[float]) -> None:
@@ -203,6 +222,8 @@ def validate_probe_payload(payload: dict, stderr: str = "", expected_duration: O
             )
 
     audio_packets = 0
+    av_start_delta = None
+    av_end_delta = None
     if audio_streams:
         audio = audio_streams[0]
         audio_packets = _packet_count(audio)
@@ -222,12 +243,28 @@ def validate_probe_payload(payload: dict, stderr: str = "", expected_duration: O
                     f"至少应有约 {minimum_audio_packets} 包"
                 )
 
+        video_start = _packet_timestamp(video, "packet_first_dts")
+        video_end = _packet_timestamp(video, "packet_last_dts")
+        audio_start = _packet_timestamp(audio, "packet_first_dts")
+        audio_end = _packet_timestamp(audio, "packet_last_dts")
+        if None not in (video_start, video_end, audio_start, audio_end):
+            av_start_delta = abs(video_start - audio_start)
+            av_end_delta = abs(video_end - audio_end)
+            if max(av_start_delta, av_end_delta) > MAX_AV_BOUNDARY_DELTA_SECONDS:
+                raise MediaIntegrityError(
+                    "音视频边界不同步: "
+                    f"起点相差 {av_start_delta:.3f}s，终点相差 {av_end_delta:.3f}s，"
+                    f"上限 {MAX_AV_BOUNDARY_DELTA_SECONDS:.3f}s"
+                )
+
     return {
         "version": CACHE_VERSION,
         "duration": duration,
         "video_packets": video_packets,
         "audio_packets": audio_packets,
         "fps": fps,
+        "av_start_delta": av_start_delta,
+        "av_end_delta": av_end_delta,
     }
 
 
@@ -355,13 +392,16 @@ def validate_media_file(
             for stream in payload.get("streams") or []
             if stream.get("codec_type") in ("video", "audio") and stream.get("index") is not None
         }
-        packet_counts, structural_errors, timestamp_errors, packet_return_code = _scan_packets(media, stream_indexes)
+        packet_stats, structural_errors, timestamp_errors, packet_return_code = _scan_packets(media, stream_indexes)
         if packet_return_code != 0 and not structural_errors:
             structural_errors.append(f"ffprobe packet scan exited with {packet_return_code}")
         for stream in payload.get("streams") or []:
             index = stream.get("index")
             if index is not None:
-                stream["nb_read_packets"] = str(packet_counts.get(int(index), 0))
+                stats = packet_stats.get(int(index), {})
+                stream["nb_read_packets"] = str(stats.get("count", 0))
+                stream["packet_first_dts"] = stats.get("first_dts")
+                stream["packet_last_dts"] = stats.get("last_dts")
         scan_errors = "\n".join(structural_errors + timestamp_errors)
         report = validate_probe_payload(payload, scan_errors, expected_duration)
         report["fingerprint"] = fingerprint

@@ -23,6 +23,7 @@ danmaku-highlights = "highlight_editor:main"
 [tool.setuptools]
 py-modules = [
   "danmaku_uid",
+  "biliup_integration",
   "dual_platform_program",
   "highlight_editor",
   "media_integrity",
