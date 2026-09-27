@@ -119,6 +119,22 @@ class SourceProgramTests(unittest.TestCase):
                 self.assertFalse(any(node["category"] == "爽局"
                                      for node in source.analyze(rows)["nodes"]))
 
+    def test_shuangju_reversed_completed_grab_and_explosion(self):
+        for text in ("这波抓爽了坤", "这把炸爽了坤", "抓爽了啊坤坤"):
+            with self.subTest(text=text):
+                rows = [Message(200, "douyin:anchor", text)]
+                rows += self.rows("bilibili", "爽了", (202, 204, 206))
+                self.assertTrue(any(node["category"] == "爽局"
+                                    for node in source.analyze(rows)["nodes"]))
+
+        for text in ("抓爽了", "炸爽了主播", "赢麻了坤", "打爽了啊，坤",
+                     "和坤守点，爽吃绿豆", "想看坤抓爽", "别人抓爽了，坤自闭了"):
+            with self.subTest(text=text):
+                rows = [Message(200, "douyin:anchor", text)]
+                rows += self.rows("bilibili", "爽了", (202, 204, 206))
+                self.assertFalse(any(node["category"] == "爽局"
+                                     for node in source.analyze(rows)["nodes"]))
+
     def test_request_cannot_trigger_hunter(self):
         rows = self.rows("douyin", "什么时候玩猎人", (100, 120, 160, 210, 250, 280))
         result = source.analyze(rows)
@@ -201,6 +217,44 @@ class SourceProgramTests(unittest.TestCase):
         self.assertEqual(node["time"], 60)
         self.assertEqual(node["reason"], "short-current-role-event")
 
+    def test_new_hunter_role_aliases_support_short_mechanics_events(self):
+        for role in ("爬墙猎人", "陷阱猎人"):
+            with self.subTest(role=role):
+                rows = self.rows("douyin", role, (100, 125, 150, 155))
+                node = source.analyze(rows)["nodes"][0]
+                self.assertEqual(node["category"], "猎人模式")
+                self.assertEqual(node["reason"], "short-mechanics-theme")
+                self.assertEqual(node["time"], 10)
+                requests = self.rows("douyin", "下次想看" + role, (100, 125, 150, 155))
+                self.assertFalse(any(n["category"] == "猎人模式"
+                                     for n in source.analyze(requests)["nodes"]))
+
+    def test_new_hunter_support_words_require_nearby_current_seed(self):
+        for word in ("爬墙", "陷阱", "天罚", "打手"):
+            with self.subTest(word=word):
+                seeds = [Message(100, "douyin:seed1", "这猎人很帅"),
+                         Message(150, "douyin:seed2", "打猎人加币子吗")]
+                support = self.rows("douyin", word, (220, 240, 260, 270))
+                nodes = source.analyze(seeds + support)["nodes"]
+                self.assertTrue(any(n["category"] == "猎人模式" for n in nodes))
+                self.assertFalse(any(n["category"] == "猎人模式"
+                                     for n in source.analyze(support)["nodes"]))
+                requests = [Message(150, "douyin:request", "下次想看猎人")]
+                self.assertFalse(any(n["category"] == "猎人模式"
+                                     for n in source.analyze(requests + support)["nodes"]))
+                far = self.rows("douyin", word, (500, 520, 540, 550))
+                self.assertFalse(any(n["category"] == "猎人模式"
+                                     for n in source.analyze(seeds + far)["nodes"]))
+
+    def test_requested_new_hunter_support_words_are_excluded(self):
+        seeds = [Message(100, "douyin:seed1", "这猎人很帅"),
+                 Message(150, "douyin:seed2", "猎人来了")]
+        requests = [Message(t, f"douyin:request{i}", "下次想看" + word)
+                    for i, (t, word) in enumerate(zip((220, 240, 260, 270),
+                                                     ("爬墙", "陷阱", "天罚", "打手")))]
+        self.assertFalse(any(n["category"] == "猎人模式"
+                             for n in source.analyze(seeds + requests)["nodes"]))
+
     def test_bare_role_predictions_do_not_create_short_boss_event(self):
         rows = [
             Message(100, "douyin:mode", "特殊模式了"),
@@ -228,7 +282,7 @@ class SourceProgramTests(unittest.TestCase):
     def test_each_boss_role_name_is_current_mode_evidence(self):
         for role in (
             "夜魔", "夜行者", "麦叔", "水果刀", "火箭筒", "RPG", "rpg",
-            "追迹者", "复仇之神", "复仇女神", "双子星", "恶龙",
+            "追迹者", "复仇之神", "复仇女神", "双子星", "恶龙", "龙族",
         ):
             with self.subTest(role=role):
                 rows = [
@@ -239,6 +293,28 @@ class SourceProgramTests(unittest.TestCase):
                 node = source.analyze(rows)["nodes"][0]
                 self.assertEqual(node["category"], "Boss英雄模式")
                 self.assertEqual(node["reason"], "short-current-role-event")
+
+    def test_dragon_alias_requires_nearby_current_boss_evidence(self):
+        rows = [
+            Message(100, "douyin:boss", "恶龙来了"),
+            Message(112, "douyin:dragon-1", "这个龙是玩家吗"),
+            Message(124, "bilibili:dragon-2", "龙还给上个无敌"),
+            Message(130, "douyin:prediction", "下一局龙族"),
+        ]
+        nodes = [node for node in source.analyze(rows)["nodes"]
+                 if node["category"] == "Boss英雄模式"]
+        self.assertEqual(len(nodes), 1)
+        self.assertEqual(nodes[0]["reason"], "short-current-role-event")
+        self.assertNotIn("下一局龙族", nodes[0]["evidence"]["douyin"]["examples"])
+
+        unrelated = [
+            Message(100, "douyin:u1", "人中龙凤"),
+            Message(112, "douyin:u2", "龙珠超"),
+            Message(124, "douyin:u3", "游龙"),
+            Message(136, "douyin:u4", "这个龙是玩家吗"),
+        ]
+        self.assertFalse(any(node["category"] == "Boss英雄模式"
+                             for node in source.analyze(unrelated)["nodes"]))
 
     def test_noncurrent_new_boss_role_mentions_remain_rejected(self):
         rows = [
@@ -274,12 +350,60 @@ class SourceProgramTests(unittest.TestCase):
         self.assertEqual(node["reason"], "short-current-role-event")
 
     def test_exclusive_hero_professions_are_current_mode_evidence(self):
-        for role in ("狙击手", "等离子"):
+        for role in ("狙击手", "反叛者", "等离子"):
             with self.subTest(role=role):
                 rows = self.rows("douyin", role, (100, 112, 124))
                 node = source.analyze(rows)["nodes"][0]
                 self.assertEqual(node["category"], "Boss英雄模式")
                 self.assertEqual(node["reason"], "short-current-role-event")
+
+    def test_assassin_only_supports_nearby_boss_evidence(self):
+        roles = self.rows("douyin", "刺客", (160, 180, 200, 220))
+        seeds = [Message(100, "douyin:seed1", "这boss很强"),
+                 Message(150, "douyin:seed2", "boss技能是什么")]
+        self.assertTrue(any(n["category"] == "Boss英雄模式"
+                            for n in source.analyze(seeds + roles)["nodes"]))
+        self.assertFalse(any(n["category"] == "Boss英雄模式"
+                             for n in source.analyze(roles)["nodes"]))
+        hero_only = [Message(100, "douyin:seed1", "这英雄很强"),
+                     Message(150, "douyin:seed2", "英雄技能是什么")]
+        self.assertFalse(any(n["category"] == "Boss英雄模式"
+                             for n in source.analyze(hero_only + roles)["nodes"]))
+
+    def test_freeman_requires_explicit_hero_context(self):
+        roles = self.rows("douyin", "弗里曼", (160, 180, 200, 220))
+        hero = [Message(100, "douyin:seed1", "这英雄很强"),
+                Message(150, "douyin:seed2", "英雄技能是什么")]
+        self.assertTrue(any(n["category"] == "Boss英雄模式"
+                            for n in source.analyze(hero + roles)["nodes"]))
+        for texts in (("这boss很强", "boss技能是什么"), ("狙击手", "等离子")):
+            seeds = [Message(t, f"douyin:seed{i}", text)
+                     for i, (t, text) in enumerate(zip((100, 150), texts))]
+            self.assertFalse(any(n["category"] == "Boss英雄模式"
+                                 for n in source.analyze(seeds + roles)["nodes"]))
+        self.assertFalse(any(n["category"] == "Boss英雄模式"
+                             for n in source.analyze(roles)["nodes"]))
+
+    def test_zombie_names_do_not_exclude_explicit_hero_evidence(self):
+        hero = [Message(100, "douyin:seed1", "这英雄很强"),
+                Message(150, "douyin:seed2", "英雄技能是什么")]
+        for text in ("烧焦弗里曼", "防火僵尸和弗里曼"):
+            with self.subTest(text=text):
+                roles = self.rows("douyin", text, (160, 180, 200, 220))
+                self.assertTrue(any(n["category"] == "Boss英雄模式"
+                                    for n in source.analyze(hero + roles)["nodes"]))
+                self.assertFalse(any(n["category"] == "Boss英雄模式"
+                                     for n in source.analyze(roles)["nodes"]))
+
+    def test_assassin_and_freeman_keep_request_and_distance_filters(self):
+        for role, faction in (("刺客", "boss"), ("弗里曼", "英雄")):
+            seeds = [Message(100, "douyin:seed1", "这" + faction + "很强"),
+                     Message(150, "douyin:seed2", faction + "技能是什么")]
+            requests = self.rows("douyin", "下次想看" + role, (160, 180, 200, 220))
+            far = self.rows("douyin", role, (500, 520, 540, 560))
+            for support in (requests, far):
+                self.assertFalse(any(n["category"] == "Boss英雄模式"
+                                     for n in source.analyze(seeds + support)["nodes"]))
 
     def test_human_hero_and_zombie_boss_are_explicit_faction_roles(self):
         rows = [
@@ -290,6 +414,20 @@ class SourceProgramTests(unittest.TestCase):
         node = source.analyze(rows)["nodes"][0]
         self.assertEqual(node["category"], "Boss英雄模式")
         self.assertEqual(node["reason"], "short-current-role-event")
+
+    def test_rebel_requests_do_not_hide_later_current_role_evidence(self):
+        requests = [Message(10 + 12 * i, f"douyin:request{i}", text)
+                    for i, text in enumerate(("想看反叛者", "下把反叛者", "预测反叛者"))]
+        self.assertFalse(any(n["category"] == "Boss英雄模式"
+                             for n in source.analyze(requests)["nodes"]))
+        current = self.rows("douyin", "反叛者", (100, 112, 124))
+        combined = source.analyze(requests + current)["nodes"]
+        self.assertEqual(combined, source.analyze(current)["nodes"])
+
+    def test_isolated_rebel_mention_does_not_create_mode_event(self):
+        rows = [Message(100, "douyin:one", "反叛者")]
+        self.assertFalse(any(n["category"] == "Boss英雄模式"
+                             for n in source.analyze(rows)["nodes"]))
 
         standalone = self.rows("douyin", "人类僵尸", (100, 110, 120, 130))
         self.assertFalse(any(node["category"] == "Boss英雄模式"

@@ -11,9 +11,11 @@ from danmaku_uid import filter_uid_spam
 from program_rule_engine_v2 import Message, LAUGHTER_SIGNAL_PATTERN
 
 
-BOSS_ROLE_NAMES = r"夜魔|夜行者|麦叔|水果刀|火箭筒|(?i:RPG)|追迹者|复仇之神|复仇女神|双子星|恶龙"
+BOSS_ROLE_NAMES = r"夜魔|夜行者|麦叔|水果刀|火箭筒|(?i:RPG)|追迹者|复仇之神|复仇女神|双子星|恶龙|龙族"
+BOSS_CONTEXT_ROLE_NAMES = r"刺客"
 HERO_CONTEXT_ROLE_NAMES = r"地雷|机枪|加特林|大狙|激光"
-HERO_EXCLUSIVE_ROLE_NAMES = r"狙击手|等离子"
+HERO_AUXILIARY_ROLE_NAMES = r"弗里曼"
+HERO_EXCLUSIVE_ROLE_NAMES = r"狙击手|反叛者|等离子"
 HERO_ROLE_NAMES = rf"{HERO_CONTEXT_ROLE_NAMES}|{HERO_EXCLUSIVE_ROLE_NAMES}"
 SHUANGJU_STREAMER_NAMES = r"坤(?:坤|哥)?|主播|鱼刺(?:坤)?"
 SHUANGJU_COMPLETED_OUTCOMES = (
@@ -23,6 +25,7 @@ SHUANGJU_COMPLETED_OUTCOMES = (
 SHUANGJU_ANCHOR_PATTERN = (
     rf"爽局|(?:让|给).{{0,4}}(?:{SHUANGJU_STREAMER_NAMES}).{{0,8}}(?:{SHUANGJU_COMPLETED_OUTCOMES})"
     rf"|(?:{SHUANGJU_STREAMER_NAMES}).{{0,8}}(?:{SHUANGJU_COMPLETED_OUTCOMES})"
+    r"|(?:抓爽|炸爽)了(?:啊|呀)? *(?:鱼刺)?坤(?:坤|哥)?"
 )
 SHUANGJU_SUPPORT_PATTERN = re.compile(r"爽|舒服|赢麻|碾压")
 SHUANGJU_SUPPORT_SECONDS = 30
@@ -52,18 +55,26 @@ HUNTER_MECHANICS = re.compile(
     r"|(?:什么|啥).{0,8}猎人模式"
 )
 HUNTER_ROLE_PATTERN = re.compile(
-    r"(?:小鬼|打手|毒液|信息|地震|迅捷|迅速|幽暗|攀爬)\s*猎人"
+    r"(?:小鬼|打手|毒液|信息|地震|迅捷|迅速|幽暗|攀爬|爬墙|陷阱)\s*猎人"
 )
-HUNTER_STANDALONE_ROLE_PATTERN = re.compile(r"小鬼|毒液|地震|迅捷|迅速|幽暗|攀爬")
+HUNTER_STANDALONE_ROLE_PATTERN = re.compile(r"小鬼|毒液|地震|迅捷|迅速|幽暗|攀爬|爬墙|陷阱|天罚|打手")
 HUNTER_ROLE_SUPPORT_SECONDS = 120
 BOSS_ROLE_PATTERN = re.compile(rf"(?:{BOSS_ROLE_NAMES})(?:\s*(?i:boss))?")
+BOSS_CONTEXT_ROLE_PATTERN = re.compile(rf"(?:{BOSS_CONTEXT_ROLE_NAMES})")
+HERO_AUXILIARY_ROLE_PATTERN = re.compile(HERO_AUXILIARY_ROLE_NAMES)
+BOSS_DRAGON_ALIAS_PATTERN = re.compile(
+    r"(?<![一-龥])龙(?![一-龥])|(?:这个|那个|这条|那条|变|当|玩|选|飞|弱|大金|绿)龙"
+    r"|龙(?:还|是|也|太|来了|死了|没了|能|玩家|技能)"
+)
 HERO_ROLE_PATTERN = re.compile(rf"(?:{HERO_ROLE_NAMES})")
 BOSS_HERO_ROLE_PATTERN = re.compile(
     rf"(?:{HERO_ROLE_NAMES})\s*英雄"
     rf"|英雄\s*(?:{HERO_ROLE_NAMES})"
+    rf"|(?:{HERO_AUXILIARY_ROLE_NAMES})\s*英雄|英雄\s*(?:{HERO_AUXILIARY_ROLE_NAMES})"
     rf"|(?:{HERO_EXCLUSIVE_ROLE_NAMES})"
     r"|人类\s*英雄|英雄\s*人类"
     r"|僵尸\s*(?i:boss)|(?i:boss)\s*僵尸"
+    rf"|(?:{BOSS_CONTEXT_ROLE_NAMES})\s*(?i:boss)|(?i:boss)\s*(?:{BOSS_CONTEXT_ROLE_NAMES})"
     rf"|{BOSS_ROLE_PATTERN.pattern}"
 )
 BOSS_HERO_CURRENT_PATTERN = re.compile(
@@ -259,11 +270,34 @@ def analyze(messages):
                     message for message in matches
                     if BOSS_HERO_CURRENT_PATTERN.search(message.text) or BOSS_HERO_ROLE_PATTERN.search(message.text)
                 ]
+                boss_seeds = [
+                    message for message in current_seeds
+                    if BOSS_ROLE_PATTERN.search(message.text) or re.search(r"boss", message.text, re.I)
+                ]
+                dragon_role_support = [
+                    message for message in messages
+                    if BOSS_DRAGON_ALIAS_PATTERN.search(message.text)
+                    and not MODE_NONCURRENT_CONTEXT.search(message.text)
+                    and any(abs(message.time - seed.time) <= BOSS_ROLE_SUPPORT_SECONDS for seed in boss_seeds)
+                ]
+                boss_role_support = [
+                    message for message in messages
+                    if BOSS_CONTEXT_ROLE_PATTERN.search(message.text)
+                    and not MODE_NONCURRENT_CONTEXT.search(message.text)
+                    and any(abs(message.time - seed.time) <= BOSS_ROLE_SUPPORT_SECONDS for seed in boss_seeds)
+                ]
                 hero_role_support = [
                     message for message in messages
                     if HERO_ROLE_PATTERN.search(message.text)
                     and not MODE_NONCURRENT_CONTEXT.search(message.text)
                     and any(abs(message.time - seed.time) <= BOSS_ROLE_SUPPORT_SECONDS for seed in current_seeds)
+                ]
+                explicit_hero_seeds = [message for message in matches if "英雄" in message.text]
+                auxiliary_hero_support = [
+                    message for message in messages
+                    if HERO_AUXILIARY_ROLE_PATTERN.search(message.text)
+                    and not MODE_NONCURRENT_CONTEXT.search(message.text)
+                    and any(abs(message.time - seed.time) <= BOSS_ROLE_SUPPORT_SECONDS for seed in explicit_hero_seeds)
                 ]
                 mode_support = [
                     message for message in messages
@@ -272,7 +306,7 @@ def analyze(messages):
                     and any(abs(message.time - seed.time) <= BOSS_ROLE_SUPPORT_SECONDS for seed in current_seeds)
                 ]
                 matches = sorted(
-                    {id(message): message for message in matches + hero_role_support + mode_support}.values(),
+                    {id(message): message for message in matches + dragon_role_support + boss_role_support + hero_role_support + auxiliary_hero_support + mode_support}.values(),
                     key=lambda m: m.time,
                 )
             islands = clusters(matches, MODE_NEIGHBOR_SECONDS)
@@ -319,6 +353,7 @@ def analyze(messages):
             boss_current_users = {
                 audience_user(message) for message in group
                 if BOSS_HERO_CURRENT_PATTERN.search(message.text) or BOSS_HERO_ROLE_PATTERN.search(message.text)
+                or (category == "Boss英雄模式" and BOSS_DRAGON_ALIAS_PATTERN.search(message.text))
             }
             short_boss_role_event = (
                 category == "Boss英雄模式"
