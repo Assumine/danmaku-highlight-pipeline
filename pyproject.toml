@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "danmaku-highlight-pipeline"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reference pipeline for danmaku-driven livestream program points and highlight boundaries"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -19,9 +19,15 @@ speech = ["faster-whisper>=1.0"]
 danmaku-program = "program_extractor:main"
 danmaku-audit = "program_audit:main"
 danmaku-highlights = "highlight_editor:main"
+danmaku-pipeline = "pipeline:main"
+danmaku-submit = "submission_worker:main"
 
 [tool.setuptools]
 py-modules = [
+  "pipeline",
+  "pipeline_runtime",
+  "montage_danmaku",
+  "submission_worker",
   "danmaku_uid",
   "biliup_integration",
   "dual_platform_program",

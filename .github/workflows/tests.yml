@@ -20,3 +20,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install -e .
       - run: python -m unittest discover -s tests -q
+      - name: Install media tools for synthetic smoke test
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Run synthetic dual-version pipeline
+        run: danmaku-pipeline --demo --workspace ./outputs/ci-demo --preview-height 360
+      - name: Require both rendered variants
+        run: python -c "import json,pathlib; jobs=[json.loads(p.read_text()) for p in pathlib.Path('outputs/ci-demo/records').glob('*/job.json')]; assert len(jobs)==1 and jobs[0]['status']=='completed' and len(jobs[0]['outputs'])==2"

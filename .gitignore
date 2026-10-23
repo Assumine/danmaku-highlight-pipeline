@@ -26,3 +26,12 @@ records/
 cookies*.json
 cookie*.json
 token*.json
+private/
+credentials*.json
+*.pem
+*.key
+*.p12
+*.pfx
+job.json
+submission.json
+alignment_report.json
